@@ -109,49 +109,15 @@ circos.par( # set a bunch of stuff
 # set plot parameters:
 par(mar = # margins
       rep(0,4)) # 0 repeated 4 times</code></pre>
-<p>And then proceed with the creation of the plot. Once again, we will create a custom function.</p>
-<pre class="r"><code># base plot
-
-chord_plot &lt;- function(my_data) {
-  
-  chordDiagram(
-    x = my_data, 
-    transparency = 0.25,
-    directional = 1,
-    direction.type = c(&quot;arrows&quot;, &quot;diffHeight&quot;), 
-    diffHeight  = -0.04,
-    annotationTrack = &quot;grid&quot;, 
-    annotationTrackHeight = c(0.05, 0.1),
-    link.arr.type = &quot;big.arrow&quot;, 
-    link.sort = TRUE, 
-    link.largest.ontop = TRUE)
-  
-  # text and axis
-  circos.trackPlotRegion(
-    track.index = 1, 
-    bg.border = NA, 
-    panel.fun = function(x, y) {
-      
-      xlim = get.cell.meta.data(&quot;xlim&quot;)
-      sector.index = get.cell.meta.data(&quot;sector.index&quot;)
-      
-      # Add names to the sector
-      circos.text(
-        x = mean(xlim), 
-        y = 3.2, 
-        labels = sector.index, 
-        facing = &quot;bending&quot;, 
-        cex = 0.8
-        )
-    }
-  )
-}</code></pre>
+<p>And then proceed with the creation of the plot. Once again, we will create a custom function. The full code is available on the GitHub <a href="https://github.com/baggiponte/escooters-louisville-r">repo</a>.</p>
 <p>And finally we can plot the final results:</p>
-<pre class="r"><code>twoway_freq %&gt;%
+<pre class="r"><code># with all neighbourhoods
+twoway_freq %&gt;%
   prep_cord_data() %&gt;%
   chord_plot()</code></pre>
 <p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
-<pre class="r"><code>twoway %&gt;%
+<pre class="r"><code># only top neighbourhoods
+twoway %&gt;%
   prep_cord_data() %&gt;%
   chord_plot()</code></pre>
 <p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-2.png" width="672" /></p>
