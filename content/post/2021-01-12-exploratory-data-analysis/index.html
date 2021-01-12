@@ -1,0 +1,203 @@
+---
+title: Exploratory Data Analysis
+author: Luca Baggi
+date: '2021-01-12'
+slug: []
+categories: []
+tags: []
+ShowToc: true
+---
+
+<script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
+
+
+<p>Let’s start by the basics: exploring the data, filtering out missing observations and do some initial visualisations with boxplots and histograms to get an idea of the most relevant variables. We shall be using these packages:</p>
+<pre class="r"><code>library(tidyverse)
+
+# for enhancing ggplot
+library(ggridges)
+library(ggthemes)
+
+# set a theme to stay for the rest of the plotting
+theme_set(theme_fivethirtyeight())</code></pre>
+<div id="load-data" class="section level1">
+<h1>Load data</h1>
+<pre class="r"><code>url = &#39;https://raw.githubusercontent.com/baggiponte/escooters-louisville-python/main/data/escooters_od.csv&#39;
+
+trips &lt;-
+  read_csv(
+    url,
+    col_types = cols(
+      StartTime = col_datetime(format = &#39;%Y-%m-%d %H:%M:%S&#39;),
+      EndTime = col_datetime(format = &#39;%Y-%m-%d %H:%M:%S&#39;)
+    )
+  ) %&gt;%
+  mutate(
+    Duration = as.integer(Duration),
+    # convert in meters
+    Distance = as.integer(round(Distance * 1609)),
+    # turn into factors
+    StartNH = as.factor(StartNH),
+    EndNH = as.factor(EndNH),
+    # rename TripID
+    TripID = 1:length(TripID),
+    # add a dummy for short trip (with short duration and distance)
+    ShortTrip = as.factor(ifelse((Duration &lt;= 1 | Distance &lt;= 100), 1, 0)),
+    # first covid death reported is on March 21st, 2020
+    Covid = as.factor(ifelse(StartTime &gt; &#39;2020-03-20 23:59:59&#39;, 1, 0))
+  ) %&gt;%
+  as_tibble()</code></pre>
+<p>Two features have been added:</p>
+<ul>
+<li><code>Covid</code> indicates if the trip happened during the COVID-19 emergency.</li>
+<li><code>ShortTrip</code> indicates if the trip is actually a very short one: shorter than 1 minute, with less than 100 meters run.</li>
+</ul>
+<pre><code>## # A tibble: 2 x 3
+##   ShortTrip      n count
+##   &lt;fct&gt;      &lt;int&gt; &lt;dbl&gt;
+## 1 0         421509 0.782
+## 2 1         117311 0.218</code></pre>
+<p>Less than 1 trip on 5 is very, very short. This may actually be a really low threshold:</p>
+<pre><code>## # A tibble: 2 x 3
+##   Covid      n  count
+##   &lt;fct&gt;  &lt;int&gt;  &lt;dbl&gt;
+## 1 0     513501 0.953 
+## 2 1      25319 0.0470</code></pre>
+<p>Only some 25.000 trips happened during COVID-19 emergency.</p>
+</div>
+<div id="boxplot" class="section level1">
+<h1>Boxplot</h1>
+<div id="boxplot-as-it-is" class="section level2">
+<h2>Boxplot as it is</h2>
+<p>To obtain a first impression, we can draw the boxplots of <code>Duration</code>:</p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>And of <code>Distance</code>:</p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+<p>There are way to many outliers: we can’t see anything!</p>
+</div>
+<div id="create-a-filter" class="section level2">
+<h2>Create a Filter</h2>
+<p>Note that there are some values of distance which are negative: we should also deal with them.</p>
+<p>We choose to create a <code>trips_filter</code> dataset with <code>Duration</code> smaller than 30 minutes and <code>Distance</code> smaller than 5km.</p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration)) +
+  geom_boxplot() +
+  ggtitle(&#39;Boxplot of Duration&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration, y = StartNH)) +
+  geom_boxplot() +
+  ggtitle(&#39;Duration, by Starting Neighborhood&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-2.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance)) +
+  geom_boxplot() +
+  ggtitle(&#39;Boxplot of Distance&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-3.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance, y = StartNH)) +
+  geom_boxplot() +
+  ggtitle(&#39;Distance, by Starting Neighborhood&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-4.png" width="672" /></p>
+<p>Filtering is almost always arbitrary. Here we are not conservative at all especially because we are left nonetheless with more than 350.000 observations - a real challenge for our hardware to process!</p>
+<p>However, there are theoretical reasons behind this nonetheless: trips lasting longer than half an hour seem suspicious - we would need idle time to make a more thorough analysis. The <code>distance</code> threshold is not varying very much: only some 10.000 observations get eliminated. This will result in cleaner histograms.</p>
+<p>This will indeed underrepresent trips from the outermost neighbourhoods, but we would delete most of these regardless.</p>
+</div>
+</div>
+<div id="histograms-for-distance-and-duration" class="section level1">
+<h1>Histograms for Distance and Duration</h1>
+<p>Getting a preliminary idea of the distributions is a good practice which allows to narrow down the interesting patterns:</p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance)) +
+  geom_histogram(fill = &#39;darkseagreen&#39;, bins = 60) +
+  ggtitle(&#39;Distance Histogram&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-9-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration)) +
+  geom_histogram(fill = &#39;cornflowerblue&#39;, bins = 30) +
+  ggtitle(&#39;Duration Histogram&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-9-2.png" width="672" /></p>
+<p>But on their own these graphs aren’t very informative. We might want to see if COVID-19 has any effects:</p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance, fill = Covid)) +
+  geom_histogram(bins = 60, alpha = 0.6)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration, fill = Covid)) +
+  geom_histogram(bins = 60, alpha = 0.6)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-2.png" width="672" /></p>
+<p>It turns out, this does not tell very much, too!</p>
+</div>
+<div id="ridges-histogram-densities" class="section level1">
+<h1>Ridges, Histogram, Densities</h1>
+<div id="covid-19-effects" class="section level2">
+<h2>COVID-19 Effects</h2>
+<p>With <code>ggridges</code>, we can plot these:</p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance, y = Covid)) +
+  geom_density_ridges() +
+  ggtitle(&#39;Distance: effects of COVID-19&#39;) +
+  ylab(&#39;0: no COVID-19&#39;)</code></pre>
+<pre><code>## Picking joint bandwidth of 112</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-11-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration, y = Covid)) +
+  geom_density_ridges() +
+  ggtitle(&#39;Duration: effects of COVID-19&#39;) +
+  ylab(&#39;0: no COVID-19&#39;)</code></pre>
+<pre><code>## Picking joint bandwidth of 0.757</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-11-2.png" width="672" /></p>
+<p>Clearly COVID-19 shifts escooters usage. We can formulate a couple of hypotheses, which we won’t be statistically testing:</p>
+<ol style="list-style-type: decimal">
+<li>COVID-19 reduces the trip distance.</li>
+<li>COVID-19 however seems to have increased the variance of the trip duration.</li>
+</ol>
+<pre class="r"><code>trips_filter %&gt;%
+  filter(Covid == 0) %&gt;%
+  ggplot(aes(Duration, fill = ShortTrip)) +
+  geom_histogram(alpha = 0.8) +
+  ggtitle(&#39;Duration without COVID-19&#39;)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  filter(Covid == 1) %&gt;%
+  ggplot(aes(Duration, fill = ShortTrip)) +
+  geom_histogram(alpha = 0.8) +
+  ggtitle(&#39;Duration with COVID-19&#39;)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-12-2.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  filter(Covid == 0) %&gt;%
+  ggplot(aes(Distance, fill = ShortTrip)) +
+  geom_histogram() +
+  ggtitle(&#39;Distance without COVID-19&#39;)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-13-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  filter(Covid == 1) %&gt;%
+  ggplot(aes(Distance, fill = ShortTrip)) +
+  geom_histogram() +
+  ggtitle(&#39;Distance with COVID-19&#39;)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-13-2.png" width="672" /></p>
+<p>Quite the contrary, it seems that the duration of longer trips is the only feature to have diminished. To really test that, we would need to control for the time period where the trips actually happened!</p>
+</div>
+</div>
+<div id="ridges-and-starting-neighbourhoods" class="section level1">
+<h1>Ridges and Starting Neighbourhoods</h1>
+<p>Using <code>ggridges</code>, we can plot some smoothed histograms to get the idea of the distributions for each starting neighbourhood:</p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Distance, y = StartNH)) +
+  geom_density_ridges() +
+  ggtitle(&#39;Distance by starting neighbourhood&#39;) +
+  ylab(&#39;0: no COVID-19&#39;)</code></pre>
+<pre><code>## Picking joint bandwidth of 362</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-14-1.png" width="672" /></p>
+<pre class="r"><code>trips_filter %&gt;%
+  ggplot(aes(x = Duration, y = StartNH)) +
+  geom_density_ridges() +
+  ggtitle(&#39;Duration by starting neighbourhood&#39;) +
+  ylab(&#39;0: no COVID-19&#39;)</code></pre>
+<pre><code>## Picking joint bandwidth of 2.06</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-14-2.png" width="672" /></p>
+</div>

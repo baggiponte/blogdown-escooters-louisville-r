@@ -1,0 +1,23 @@
+theme: "hugo-PaperMod"
+baseURL: http://example.org/
+languageCode: en-us
+title: 'Data Mining and Computational Statistics'
+
+params:
+  author: Luca Baggi
+  homeInfoParams:
+    Title: >
+      Louisville Dockless Vehicles Open Data:
+      A Machine Learning Application 🛴
+    Content: >
+      This webage displays the results of mining the Louisville's dockless vehicles open data.
+      
+      - Scripts and data are available in the GitHub repo linked below.
+      
+  socialIcons:
+    - name: twitter
+      url: "https://twitter.com/LucaBaggi1997"
+    - name: linkedin
+      url: "https://www.linkedin.com/in/lucabaggi/"
+    - name: github
+      url: "https://github.com/baggiponte/escooters-louisville-with-r"
