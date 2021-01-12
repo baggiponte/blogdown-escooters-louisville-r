@@ -7,3 +7,6 @@
 renv
 renv.lock
 
+
+# Local Netlify folder
+.netlify

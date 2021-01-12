@@ -1,7 +1,7 @@
 theme: "hugo-PaperMod"
 baseURL: http://example.org/
 languageCode: en-us
-title: 'Data Mining and Computational Statistics'
+title: 'Louisville Dockless Vehicles Open Data'
 
 params:
   author: Luca Baggi
@@ -10,7 +10,10 @@ params:
       Louisville Dockless Vehicles Open Data:
       A Machine Learning Application 🛴
     Content: >
-      This webage displays the results of mining the Louisville's dockless vehicles open data.
+      This webage displays the results of mining the Louisville's dockless vehicles open data with R.
+      
+      - The project was developed under the course of Data mining and computational statistics, held
+      by prof. Giancarlo Manzi (a.y. 2019/2020).
       
       - Scripts and data are available in the GitHub repo linked below.
       
