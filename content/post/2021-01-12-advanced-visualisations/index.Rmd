@@ -145,7 +145,7 @@ par(mar = # margins
       rep(0,4)) # 0 repeated 4 times
 ```
 
-And then proceed with the creation of the plot. Once again, we will create a custom function.
+And then proceed with the creation of the plot. Once again, we will create a custom function. The full code is available on the GitHub [repo](https://github.com/baggiponte/escooters-louisville-r).
 
 ```{r, echo=FALSE}
 # base plot
@@ -190,10 +190,12 @@ chord_plot <- function(my_data) {
 And finally we can plot the final results:
 
 ```{r}
+# with all neighbourhoods
 twoway_freq %>%
   prep_cord_data() %>%
   chord_plot()
 
+# only top neighbourhoods
 twoway %>%
   prep_cord_data() %>%
   chord_plot()
