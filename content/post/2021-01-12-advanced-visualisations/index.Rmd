@@ -13,7 +13,7 @@ Now we want to create some visualisations of the flows from `StartNH` to `EndNH`
 ```{r, message=FALSE}
 library(tidyverse)
 
-# alluvial and senkey plots
+# alluvial and sankey plots
 library(ggalluvial)
 
 # chord plots
