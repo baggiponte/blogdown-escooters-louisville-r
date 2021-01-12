@@ -147,7 +147,7 @@ par(mar = # margins
 
 And then proceed with the creation of the plot. Once again, we will create a custom function.
 
-```{r}
+```{r, echo = FALSE}
 # base plot
 
 chord_plot <- function(my_data) {
