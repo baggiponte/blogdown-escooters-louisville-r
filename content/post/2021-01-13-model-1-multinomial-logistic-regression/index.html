@@ -5,8 +5,399 @@ date: '2021-01-13'
 slug: []
 categories: []
 tags: []
+ShowToc: True
 ---
 
 <script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
 
 
+<p>Let’s first start with the bread and butter of machine learning in this and the next model. We will be trying to predict the destination neighbourhood with this parametric method. Note that, since the outcome variable is a multilevel factor, we will be training a multinomial regression, using as engine <code>glmnet</code>.</p>
+<pre class="r"><code>library(tidyverse)
+library(tidymodels)
+
+# for downsampling
+library(themis) # still a tidymodels package
+
+# for predictor importance
+library(vip)</code></pre>
+<div id="load-data" class="section level1">
+<h1>Load Data</h1>
+<p>Let’s load the reduced data we obtained from part 3.</p>
+<pre class="r"><code>trips &lt;-
+  read_csv(
+    &#39;https://raw.githubusercontent.com/baggiponte/escooters-louisville-r/main/data/escooters_od_reduced.csv&#39;,
+    col_types = cols(StartTime = col_datetime(format = &#39;%Y-%m-%dT%H:%M:%SZ&#39;))
+  ) %&gt;%
+  mutate(Covid = as.factor(Covid))</code></pre>
+</div>
+<div id="split-in-train-and-test-data" class="section level1">
+<h1>Split in Train and Test Data</h1>
+<p>Class imbalance needs to be addressed via stratified sampling:</p>
+<pre class="r"><code>set.seed(42)
+
+trips_split &lt;- initial_split(trips, strata = EndNH)
+
+trips_train &lt;- training(trips_split)
+trips_test &lt;- testing(trips_split)</code></pre>
+<p>Let’s check proportions:</p>
+<pre class="r"><code>trips_train %&gt;%
+  count(EndNH) %&gt;%
+  mutate(prop = n/sum(n)) %&gt;%
+  arrange(desc(prop))</code></pre>
+<pre><code>## # A tibble: 6 x 3
+##   EndNH              n   prop
+##   &lt;chr&gt;          &lt;int&gt;  &lt;dbl&gt;
+## 1 Downtown       13813 0.477 
+## 2 University      8225 0.284 
+## 3 Southeast Core  2864 0.0990
+## 4 West Core       1387 0.0479
+## 5 Other           1329 0.0459
+## 6 Northeast Core  1313 0.0454</code></pre>
+<pre class="r"><code>trips_test %&gt;%
+  count(EndNH) %&gt;%
+  mutate(prop = n/sum(n)) %&gt;%
+  arrange(desc(prop))</code></pre>
+<pre><code>## # A tibble: 6 x 3
+##   EndNH              n   prop
+##   &lt;chr&gt;          &lt;int&gt;  &lt;dbl&gt;
+## 1 Downtown        4620 0.479 
+## 2 University      2768 0.287 
+## 3 Southeast Core   948 0.0983
+## 4 Northeast Core   441 0.0457
+## 5 West Core        441 0.0457
+## 6 Other            425 0.0441</code></pre>
+</div>
+<div id="define-a-recipe" class="section level1">
+<h1>Define a Recipe</h1>
+<p>Let’s define a recipe to address this problem. We shall <code>downsample</code> the data, which would achieve two goals:</p>
+<ol style="list-style-type: decimal">
+<li>Address class imbalance.</li>
+<li>Reduce computational workload, given our limited computational resources.</li>
+</ol>
+<pre class="r"><code>recipe_trips &lt;- trips_train %&gt;%
+  recipe(EndNH ~ .) %&gt;%
+  # problem: step_date does not extract times!
+  step_mutate(HourNum = format(strptime(StartTime,&#39;%Y-%m-%d %H:%M:%S&#39;),&#39;%H&#39;)) %&gt;%
+  # turn it into a factor
+  step_string2factor(HourNum) %&gt;%
+  # create factors out of StartTime
+  step_date(StartTime, features = c(&#39;dow&#39;, &#39;month&#39;, &#39;year&#39;)) %&gt;%
+  # create holiday dummy:
+  step_holiday(StartTime, holidays = timeDate::listHolidays(&quot;US&quot;)) %&gt;%
+  # remove StartTime col
+  step_rm(StartTime) %&gt;%
+  # turn factor-features into binary dummies (i.e. one per column: 1-0):
+  step_dummy(all_nominal(), -all_outcomes()) %&gt;%
+  # remove predictors with zero variance:
+  step_zv(all_predictors()) %&gt;%
+  # downsample the data: each class is as numerous as the least represented
+  themis::step_downsample(EndNH, under_ratio = tune())
+
+recipe_trips</code></pre>
+<pre><code>## Data Recipe
+## 
+## Inputs:
+## 
+##       role #variables
+##    outcome          1
+##  predictor          5
+## 
+## Operations:
+## 
+## Variable mutation for HourNum
+## Factor variables from HourNum
+## Date features from StartTime
+## Holiday features from StartTime
+## Delete terms StartTime
+## Dummy variables from all_nominal(), -all_outcomes()
+## Zero variance filter on all_predictors()
+## Down-sampling based on EndNH</code></pre>
+<p>In the last step, by setting <code>under_ratio</code> we bring the number of samples of all majority classes equal <em>at most</em> to some percentage of the minority class, in this case <code>other</code>. This seems reasonable, as <code>Downtown</code> is more than 10 times more frequent than <code>other</code>. But note that we did not actually set a value for <code>under_ratio</code> yet: we just set <code>tune()</code>. This is because with the package <code>tune</code> we can tune this hyperparameter as well.</p>
+<p>Now we can start thinking of our models!</p>
+</div>
+<div id="logistic-regression-model-specification" class="section level1">
+<h1>Logistic Regression: Model Specification</h1>
+<p>Normally, to specify a logistic regression, one would use <code>logistic_reg()</code>, perhaps with the engine <code>glm</code>. However, for multinomial regressions one must use <code>multinom_reg()</code> and said engine is unavailable:</p>
+<pre class="r"><code>show_engines(&#39;multinom_reg&#39;)</code></pre>
+<pre><code>## # A tibble: 4 x 2
+##   engine mode          
+##   &lt;chr&gt;  &lt;chr&gt;         
+## 1 glmnet classification
+## 2 spark  classification
+## 3 keras  classification
+## 4 nnet   classification</code></pre>
+<p>Specifying the <code>mode</code> is redundant: the only one available is <code>classification</code>, as one can see above.</p>
+<pre class="r"><code>logistic_to_tune &lt;-
+  multinom_reg(penalty = tune()) %&gt;%
+  set_engine(&#39;glmnet&#39;) # this is actually the default
+
+logistic_to_tune</code></pre>
+<pre><code>## Multinomial Regression Model Specification (classification)
+## 
+## Main Arguments:
+##   penalty = tune()
+## 
+## Computational engine: glmnet</code></pre>
+<p>We can also set a tuning parameter for <code>penalty</code>, which control regularisation, to deal with sparsity: since there are a great deal of dummies (holidays, in particular), we might want to drop out these coefficients.</p>
+<p>There is also <code>mixture</code>, which allows to create an elastic net, balancing sparse coefficient estimation (LASSO) and regularisation (Ridge).</p>
+</div>
+<div id="combine-the-recipe-and-the-model-into-a-workflow" class="section level1">
+<h1>Combine the Recipe and the Model into a Workflow</h1>
+<p>We put the recipe and the model into a workflow, to visualise the tuning parameters, among others.</p>
+<pre class="r"><code>logistic_tuning_workflow &lt;- workflow() %&gt;%
+  add_recipe(recipe_trips) %&gt;%
+  add_model(logistic_to_tune)
+
+logistic_tuning_workflow</code></pre>
+<pre><code>## ══ Workflow ════════════════════════════════════════════════════════════════════
+## Preprocessor: Recipe
+## Model: multinom_reg()
+## 
+## ── Preprocessor ────────────────────────────────────────────────────────────────
+## 8 Recipe Steps
+## 
+## ● step_mutate()
+## ● step_string2factor()
+## ● step_date()
+## ● step_holiday()
+## ● step_rm()
+## ● step_dummy()
+## ● step_zv()
+## ● step_downsample()
+## 
+## ── Model ───────────────────────────────────────────────────────────────────────
+## Multinomial Regression Model Specification (classification)
+## 
+## Main Arguments:
+##   penalty = tune()
+## 
+## Computational engine: glmnet</code></pre>
+</div>
+<div id="create-the-tuning-grid" class="section level1">
+<h1>Create the Tuning Grid</h1>
+<p>Let’s create a grid using the <code>dials</code> package:</p>
+<pre class="r"><code>logistic_grid &lt;- grid_regular(under_ratio(),
+                              penalty(),
+                              levels = 5)</code></pre>
+</div>
+<div id="cross-validation-k-folds" class="section level1">
+<h1>Cross Validation K-Folds</h1>
+<p>We then assign the folds. <code>rsample</code> has <code>v = 10</code> as the number of folds and <code>repeats = 1</code>. We slightly tweak the configuration, stratifying by <code>EndNH</code>:</p>
+<pre class="r"><code>tuning_folds &lt;-
+  trips_train %&gt;%
+  vfold_cv(v = 5, strata = &#39;EndNH&#39;)</code></pre>
+</div>
+<div id="hyperparameters-tuning" class="section level1">
+<h1>Hyperparameters Tuning</h1>
+<div id="cross-validation" class="section level2">
+<h2>Cross Validation</h2>
+<p>This will fit 5x5 hyperparameters combinations to 5 folds: a total of 125 models! The package also has some defaults metrics for each machine learning problem: classification and regression, plus metrics for predicted classes in classification problems.</p>
+<pre class="r"><code>set.seed(42)
+
+logistic_resampling &lt;-
+  logistic_tuning_workflow %&gt;%
+  tune_grid(
+    resamples = tuning_folds,
+    grid = logistic_grid
+  )</code></pre>
+<pre><code>## 
+## Attaching package: &#39;rlang&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:purrr&#39;:
+## 
+##     %@%, as_function, flatten, flatten_chr, flatten_dbl, flatten_int,
+##     flatten_lgl, flatten_raw, invoke, list_along, modify, prepend,
+##     splice</code></pre>
+<pre><code>## 
+## Attaching package: &#39;vctrs&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
+## 
+##     data_frame</code></pre>
+<pre><code>## The following object is masked from &#39;package:tibble&#39;:
+## 
+##     data_frame</code></pre>
+<pre><code>## Loading required package: Matrix</code></pre>
+<pre><code>## 
+## Attaching package: &#39;Matrix&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:tidyr&#39;:
+## 
+##     expand, pack, unpack</code></pre>
+<pre><code>## Loaded glmnet 4.1</code></pre>
+<pre><code>## ! Fold1: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre><code>## ! Fold2: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre><code>## ! Fold3: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre><code>## ! Fold4: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre><code>## ! Fold5: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre class="r"><code>logistic_resampling %&gt;%
+  collect_metrics() %&gt;%
+  arrange(desc(mean))</code></pre>
+<pre><code>## # A tibble: 50 x 8
+##       penalty under_ratio .metric  .estimator  mean     n  std_err .config      
+##         &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;    &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;    &lt;dbl&gt; &lt;chr&gt;        
+##  1   3.16e- 3         1.2 roc_auc  hand_till  0.882     1 NA       Preprocessor…
+##  2   3.16e- 3         1.1 roc_auc  hand_till  0.881     1 NA       Preprocessor…
+##  3   3.16e- 3         0.8 roc_auc  hand_till  0.864     1 NA       Preprocessor…
+##  4   3.16e- 3         1.2 accuracy multiclass 0.791     5  0.00236 Preprocessor…
+##  5   3.16e- 3         1.1 accuracy multiclass 0.784     5  0.00323 Preprocessor…
+##  6   3.16e- 3         1   accuracy multiclass 0.781     5  0.00360 Preprocessor…
+##  7   3.16e- 3         0.8 accuracy multiclass 0.777     5  0.00453 Preprocessor…
+##  8   3.16e- 3         0.9 accuracy multiclass 0.775     5  0.00290 Preprocessor…
+##  9   1.00e-10         1.2 accuracy multiclass 0.768     5  0.00369 Preprocessor…
+## 10   3.16e- 8         1.2 accuracy multiclass 0.768     5  0.00369 Preprocessor…
+## # … with 40 more rows</code></pre>
+</div>
+<div id="best-model-selection" class="section level2">
+<h2>Best Model Selection</h2>
+<p>To immediately select the best models according to the metrics, we can do this:</p>
+<pre class="r"><code>logistic_resampling %&gt;%
+  show_best(metric = &#39;roc_auc&#39;)</code></pre>
+<pre><code>## # A tibble: 5 x 8
+##   penalty under_ratio .metric .estimator  mean     n std_err .config            
+##     &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;   &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;   &lt;dbl&gt; &lt;chr&gt;              
+## 1 0.00316         1.2 roc_auc hand_till  0.882     1      NA Preprocessor5_Mode…
+## 2 0.00316         1.1 roc_auc hand_till  0.881     1      NA Preprocessor4_Mode…
+## 3 0.00316         0.8 roc_auc hand_till  0.864     1      NA Preprocessor1_Mode…
+## 4 1               0.8 roc_auc hand_till  0.5       5       0 Preprocessor1_Mode…
+## 5 1               0.9 roc_auc hand_till  0.5       5       0 Preprocessor2_Mode…</code></pre>
+<pre class="r"><code>logistic_resampling %&gt;%
+  show_best(metric = &#39;accuracy&#39;)</code></pre>
+<pre><code>## # A tibble: 5 x 8
+##   penalty under_ratio .metric  .estimator  mean     n std_err .config           
+##     &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;    &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;   &lt;dbl&gt; &lt;chr&gt;             
+## 1 0.00316         1.2 accuracy multiclass 0.791     5 0.00236 Preprocessor5_Mod…
+## 2 0.00316         1.1 accuracy multiclass 0.784     5 0.00323 Preprocessor4_Mod…
+## 3 0.00316         1   accuracy multiclass 0.781     5 0.00360 Preprocessor3_Mod…
+## 4 0.00316         0.8 accuracy multiclass 0.777     5 0.00453 Preprocessor1_Mod…
+## 5 0.00316         0.9 accuracy multiclass 0.775     5 0.00290 Preprocessor2_Mod…</code></pre>
+<p>But this does not tell much. Let’s plot it:</p>
+<pre class="r"><code>logistic_resampling %&gt;%
+  autoplot()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
+<p>Which is the same as:</p>
+<pre class="r"><code>logistic_resampling %&gt;%
+  collect_metrics() %&gt;%
+  # transform into a factor
+  mutate(under_ratio = factor(under_ratio)) %&gt;%
+  ggplot(aes(
+    x = penalty,
+    y = mean,
+    col = under_ratio
+  )) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  # have two graphs, one for each metric
+  facet_wrap(~ .metric, scales = &#39;free&#39;, nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = &quot;plasma&quot;, begin = .9, end = 0)</code></pre>
+<pre><code>## Warning: Removed 17 rows containing missing values (geom_point).</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-13-1.png" width="672" /></p>
+<p>There are some missing values because the model failed miserably at classification! The plot shows that we are indifferent between <strong>any under ratio</strong> (we might want to use 1.2 to keep in as much data as we can) and have <strong>low regularisation</strong>! Let’s extract the best model:</p>
+<pre class="r"><code>best_logistic_roc &lt;-
+  logistic_resampling %&gt;%
+  select_best(&#39;roc_auc&#39;)
+
+best_logistic_accuracy &lt;-
+  logistic_resampling %&gt;%
+  select_best(&#39;accuracy&#39;)
+
+best_logistic_roc</code></pre>
+<pre><code>## # A tibble: 1 x 3
+##   penalty under_ratio .config             
+##     &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;               
+## 1 0.00316         1.2 Preprocessor5_Model4</code></pre>
+<pre class="r"><code>best_logistic_accuracy</code></pre>
+<pre><code>## # A tibble: 1 x 3
+##   penalty under_ratio .config             
+##     &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;               
+## 1 0.00316         1.2 Preprocessor5_Model4</code></pre>
+<p>This confirms that we are indifferent between any <code>under_ratio</code>, but there is convergence on regularisation!</p>
+</div>
+</div>
+<div id="finalise-the-workflow-and-last-fit" class="section level1">
+<h1>Finalise the Workflow and Last Fit</h1>
+<pre class="r"><code>final_logistic_workflow &lt;-
+  logistic_tuning_workflow %&gt;%
+  finalize_workflow(best_logistic_roc)
+
+final_logistic_workflow</code></pre>
+<pre><code>## ══ Workflow ════════════════════════════════════════════════════════════════════
+## Preprocessor: Recipe
+## Model: multinom_reg()
+## 
+## ── Preprocessor ────────────────────────────────────────────────────────────────
+## 8 Recipe Steps
+## 
+## ● step_mutate()
+## ● step_string2factor()
+## ● step_date()
+## ● step_holiday()
+## ● step_rm()
+## ● step_dummy()
+## ● step_zv()
+## ● step_downsample()
+## 
+## ── Model ───────────────────────────────────────────────────────────────────────
+## Multinomial Regression Model Specification (classification)
+## 
+## Main Arguments:
+##   penalty = 0.00316227766016838
+## 
+## Computational engine: glmnet</code></pre>
+<p>And let’s do the last fit:</p>
+<pre class="r"><code>set.seed(42)
+
+logistic_last_fit &lt;-
+  final_logistic_workflow %&gt;%
+  last_fit(trips_split)</code></pre>
+<pre><code>## ! train/test split: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
+<pre class="r"><code>logistic_last_fit</code></pre>
+<pre><code>## Warning: This tuning result has notes. Example notes on model fitting include:
+## internal: No observations were detected in `truth` for level(s): &#39;Downtown&#39;, &#39;Northeast Core&#39;, &#39;Other&#39;, &#39;Southeast Core&#39;, &#39;University&#39;, &#39;West Core&#39;
+## Computation will proceed by ignoring those levels.</code></pre>
+<pre><code>## # Resampling results
+## # Manual resampling 
+## # A tibble: 1 x 6
+##   splits         id          .metrics     .notes      .predictions     .workflow
+##   &lt;list&gt;         &lt;chr&gt;       &lt;list&gt;       &lt;list&gt;      &lt;list&gt;           &lt;list&gt;   
+## 1 &lt;split [28.9K… train/test… &lt;tibble [2 … &lt;tibble [1… &lt;tibble [9,643 … &lt;workflo…</code></pre>
+<p>Let’s get the metrics:</p>
+<pre class="r"><code>logistic_last_fit %&gt;%
+  collect_metrics()</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   .metric  .estimator .estimate .config             
+##   &lt;chr&gt;    &lt;chr&gt;          &lt;dbl&gt; &lt;chr&gt;               
+## 1 accuracy multiclass     0.801 Preprocessor1_Model1
+## 2 roc_auc  hand_till    NaN     Preprocessor1_Model1</code></pre>
+<p>Which, unfortunately, has lower accuracy than our train model! The ideal situation would be to display a higher test accuracy, compared to the training. Also, the missing <code>auc_roc</code> seems a bad sign. However, since we are doing multinomial classification, it is to be expected! The most we might get is a ROC measure for each class against the other, after grouping them.</p>
+<p>Let’s see the contribution of each variable:</p>
+<pre class="r"><code>logistic_last_fit %&gt;%
+  pluck(&#39;.workflow&#39;, 1) %&gt;%
+  pull_workflow_fit() %&gt;%
+  vip()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-18-1.png" width="672" />
+# Model Evaluation</p>
+<p>The program can’t tell us the predictions associated with each class, but we are interested in <code>.pred_class</code>:</p>
+<pre class="r"><code>logistic_last_fit %&gt;%
+  collect_predictions() %&gt;%
+  head()</code></pre>
+<pre><code>## # A tibble: 6 x 11
+##   id    .pred_Downtown `.pred_Northeas… .pred_Other `.pred_Southeas…
+##   &lt;chr&gt;          &lt;dbl&gt;            &lt;dbl&gt;       &lt;dbl&gt;            &lt;dbl&gt;
+## 1 trai…            NaN              NaN         NaN              NaN
+## 2 trai…            NaN              NaN         NaN              NaN
+## 3 trai…            NaN              NaN         NaN              NaN
+## 4 trai…            NaN              NaN         NaN              NaN
+## 5 trai…            NaN              NaN         NaN              NaN
+## 6 trai…            NaN              NaN         NaN              NaN
+## # … with 6 more variables: .pred_University &lt;dbl&gt;, `.pred_West Core` &lt;dbl&gt;,
+## #   .row &lt;int&gt;, .pred_class &lt;fct&gt;, EndNH &lt;fct&gt;, .config &lt;chr&gt;</code></pre>
+<p>But we can get a confusion matrix:</p>
+<pre class="r"><code>logistic_last_fit %&gt;%
+  collect_predictions() %&gt;%
+  conf_mat(EndNH, .pred_class) %&gt;%
+  autoplot(type = &#39;heatmap&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-20-1.png" width="672" /></p>
+</div>
+<div id="final-considerations" class="section level1">
+<h1>Final Considerations:</h1>
+<p>Some mismatches may be due to proximity of the destinations, which we do not account for here.</p>
+</div>

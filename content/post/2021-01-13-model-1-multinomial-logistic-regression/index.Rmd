@@ -8,7 +8,7 @@ tags: []
 ShowToc: True
 ---
 
-# Load Packages
+Let's first start with the bread and butter of machine learning in this and the next model. We will be trying to predict the destination neighbourhood with this parametric method. Note that, since the outcome variable is a multilevel factor, we will be training a multinomial regression, using as engine `glmnet`.
 
 ```{r, message=FALSE}
 library(tidyverse)
@@ -106,7 +106,8 @@ show_engines('multinom_reg')
 Specifying the `mode` is redundant: the only one available is `classification`, as one can see above.
 
 ```{r}
-logistic_to_tune <- multinom_reg(penalty = tune()) %>%
+logistic_to_tune <-
+  multinom_reg(penalty = tune()) %>%
   set_engine('glmnet') # this is actually the default
 
 logistic_to_tune
@@ -153,8 +154,7 @@ tuning_folds <-
 
 This will fit 5x5 hyperparameters combinations to 5 folds: a total of 125 models! The package also has some defaults metrics for each machine learning problem: classification and regression, plus metrics for predicted classes in classification problems.
 
-```{r, eval=TRUE}
-#code evaluation is set to false when compiling to prevent fitting each time
+```{r}
 set.seed(42)
 
 logistic_resampling <-
