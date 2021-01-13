@@ -148,6 +148,7 @@ tuning_folds <-
   trips_train %>%
   vfold_cv(v = 5, strata = 'EndNH')
 ```
+
 # Hyperparameters Tuning
 
 ## Cross Validation
