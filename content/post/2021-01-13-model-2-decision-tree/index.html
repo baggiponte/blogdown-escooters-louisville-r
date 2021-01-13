@@ -11,3 +11,279 @@ ShowToc: true
 <script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
 
 
+<p>Let’s train a widely employed, non-parametric machine learning algorithm. We shall outline its limits and improve on it with the next model.</p>
+<pre class="r"><code>library(tidymodels)
+library(tidyverse)
+
+# for downsampling
+library(themis)
+
+# for visualising importance of predictors
+library(vip)</code></pre>
+<div id="load-data" class="section level1">
+<h1>Load Data</h1>
+<pre class="r"><code>trips &lt;-
+  read_csv(
+    &#39;https://raw.githubusercontent.com/baggiponte/escooters-louisville-r/main/data/escooters_od_reduced.csv&#39;,
+    col_types = cols(
+      StartTime = col_datetime(format = &#39;%Y-%m-%dT%H:%M:%SZ&#39;),
+      Covid = col_factor(),
+      StartNH = col_factor(),
+      EndNH = col_factor()
+    ))</code></pre>
+</div>
+<div id="split-in-train-and-test-data" class="section level1">
+<h1>Split in Train and Test Data</h1>
+<p>Class imbalance needs to be addressed with stratified sampling, as we did in the earlier post:</p>
+<pre class="r"><code>set.seed(42)
+
+trips_split &lt;- initial_split(trips, strata = EndNH)
+
+trips_train &lt;- training(trips_split)
+trips_test &lt;- testing(trips_split)</code></pre>
+</div>
+<div id="define-the-recipe" class="section level1">
+<h1>Define the Recipe</h1>
+<p>This time, we shall set <code>under_ratio</code> to 1.</p>
+<pre class="r"><code>trips_recipe &lt;- trips_train %&gt;%
+  recipe(EndNH ~ .) %&gt;%
+  # problem: step_date does not extract times!
+  step_mutate(HourNum = format(strptime(StartTime,&#39;%Y-%m-%d %H:%M:%S&#39;),&#39;%H&#39;)) %&gt;%
+  # turn it into a factor
+  step_string2factor(HourNum) %&gt;%
+  # create factors out of StartTime
+  step_date(StartTime, features = c(&#39;dow&#39;, &#39;month&#39;, &#39;year&#39;)) %&gt;%
+  # create holiday dummy:
+  step_holiday(StartTime, holidays = timeDate::listHolidays(&quot;US&quot;)) %&gt;%
+  # remove StartTime col
+  step_rm(StartTime) %&gt;%
+  # turn factor-features into binary dummies (i.e. one per column: 1-0):
+  step_dummy(all_nominal(), -all_outcomes()) %&gt;%
+  # remove predictors with zero variance:
+  step_zv(all_predictors()) %&gt;%
+  # downsample the data: each class is as numerous as the least represented
+  themis::step_downsample(EndNH, under_ratio = 1)</code></pre>
+</div>
+<div id="define-a-model-with-the-parameters-to-tune" class="section level1">
+<h1>Define a Model with the Parameters to Tune</h1>
+<pre class="r"><code>tree_to_tune &lt;- 
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune()
+  ) %&gt;% 
+  set_engine(&quot;rpart&quot;) %&gt;% 
+  set_mode(&quot;classification&quot;)
+
+tree_to_tune</code></pre>
+<pre><code>## Decision Tree Model Specification (classification)
+## 
+## Main Arguments:
+##   cost_complexity = tune()
+##   tree_depth = tune()
+## 
+## Computational engine: rpart</code></pre>
+</div>
+<div id="add-the-recipe-and-the-model-to-the-tuning-workflow" class="section level1">
+<h1>Add the Recipe and the Model to the Tuning Workflow</h1>
+<pre class="r"><code>tree_tuning_workflow &lt;-
+  workflow() %&gt;%
+  add_model(tree_to_tune) %&gt;%
+  add_recipe(trips_recipe)
+
+tree_tuning_workflow</code></pre>
+<pre><code>## ══ Workflow ════════════════════════════════════════════════════════════════════
+## Preprocessor: Recipe
+## Model: decision_tree()
+## 
+## ── Preprocessor ────────────────────────────────────────────────────────────────
+## 8 Recipe Steps
+## 
+## ● step_mutate()
+## ● step_string2factor()
+## ● step_date()
+## ● step_holiday()
+## ● step_rm()
+## ● step_dummy()
+## ● step_zv()
+## ● step_downsample()
+## 
+## ── Model ───────────────────────────────────────────────────────────────────────
+## Decision Tree Model Specification (classification)
+## 
+## Main Arguments:
+##   cost_complexity = tune()
+##   tree_depth = tune()
+## 
+## Computational engine: rpart</code></pre>
+</div>
+<div id="hyper-parameters-tuning" class="section level1">
+<h1>Hyper-parameters Tuning</h1>
+<div id="define-the-tuning-grid" class="section level2">
+<h2>Define the tuning grid</h2>
+<pre class="r"><code>tree_tune_grid &lt;- dials::grid_regular(cost_complexity(),
+                               tree_depth(),
+                               levels = 5)
+
+tree_tune_grid</code></pre>
+<pre><code>## # A tibble: 25 x 2
+##    cost_complexity tree_depth
+##              &lt;dbl&gt;      &lt;int&gt;
+##  1    0.0000000001          1
+##  2    0.0000000178          1
+##  3    0.00000316            1
+##  4    0.000562              1
+##  5    0.1                   1
+##  6    0.0000000001          4
+##  7    0.0000000178          4
+##  8    0.00000316            4
+##  9    0.000562              4
+## 10    0.1                   4
+## # … with 15 more rows</code></pre>
+</div>
+<div id="k-fold-cross-validation" class="section level2">
+<h2><code>k-fold</code> Cross Validation</h2>
+<p>Defaults are <code>v = 10</code> and <code>repeats = 1</code>: we won’t stick to these totally, to be consistent with our previous model. Folds are stratified, to ensure equal representation.</p>
+<pre class="r"><code>set.seed(42)
+
+tree_cv_folds &lt;-
+  trips_train %&gt;%
+  vfold_cv(v = 5, strata = &quot;StartNH&quot;)
+
+tree_cv_folds</code></pre>
+<pre><code>## #  5-fold cross-validation using stratification 
+## # A tibble: 5 x 2
+##   splits               id   
+##   &lt;list&gt;               &lt;chr&gt;
+## 1 &lt;split [23.1K/5.8K]&gt; Fold1
+## 2 &lt;split [23.1K/5.8K]&gt; Fold2
+## 3 &lt;split [23.1K/5.8K]&gt; Fold3
+## 4 &lt;split [23.1K/5.8K]&gt; Fold4
+## 5 &lt;split [23.1K/5.8K]&gt; Fold5</code></pre>
+</div>
+</div>
+<div id="cross-validation-for-parameter-tuning" class="section level1">
+<h1>Cross validation for parameter tuning</h1>
+<pre class="r"><code>set.seed(42)
+
+tree_resampling &lt;-
+  tree_tuning_workflow %&gt;%
+  tune_grid(
+    resamples = tree_cv_folds,
+    grid = tree_tune_grid
+  )</code></pre>
+<pre><code>## 
+## Attaching package: &#39;rlang&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:purrr&#39;:
+## 
+##     %@%, as_function, flatten, flatten_chr, flatten_dbl, flatten_int,
+##     flatten_lgl, flatten_raw, invoke, list_along, modify, prepend,
+##     splice</code></pre>
+<pre><code>## 
+## Attaching package: &#39;vctrs&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:tibble&#39;:
+## 
+##     data_frame</code></pre>
+<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
+## 
+##     data_frame</code></pre>
+<pre><code>## 
+## Attaching package: &#39;rpart&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:dials&#39;:
+## 
+##     prune</code></pre>
+<pre class="r"><code>tree_resampling %&gt;%
+  collect_metrics() %&gt;%
+  arrange(desc(mean))</code></pre>
+<pre><code>## # A tibble: 50 x 8
+##    cost_complexity tree_depth .metric .estimator  mean     n std_err .config    
+##              &lt;dbl&gt;      &lt;int&gt; &lt;chr&gt;   &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;   &lt;dbl&gt; &lt;chr&gt;      
+##  1    0.0000000001          8 roc_auc hand_till  0.889     5 0.00358 Preprocess…
+##  2    0.0000000178          8 roc_auc hand_till  0.889     5 0.00358 Preprocess…
+##  3    0.00000316            8 roc_auc hand_till  0.889     5 0.00358 Preprocess…
+##  4    0.0000000001         11 roc_auc hand_till  0.886     5 0.00440 Preprocess…
+##  5    0.0000000178         11 roc_auc hand_till  0.886     5 0.00440 Preprocess…
+##  6    0.00000316           11 roc_auc hand_till  0.886     5 0.00440 Preprocess…
+##  7    0.000562              8 roc_auc hand_till  0.883     5 0.00407 Preprocess…
+##  8    0.0000000001         15 roc_auc hand_till  0.883     5 0.00408 Preprocess…
+##  9    0.0000000178         15 roc_auc hand_till  0.883     5 0.00408 Preprocess…
+## 10    0.00000316           15 roc_auc hand_till  0.883     5 0.00408 Preprocess…
+## # … with 40 more rows</code></pre>
+<p>Performances are quite similar to those of the logistic, at least on the training set. Cost complexity does not affect performance, apparently. Let’s plot it!</p>
+<pre class="r"><code>tree_resampling %&gt;%
+  autoplot()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" />
+We see quite a weird pattern. Accuracy increases with cost complexity when the number of branches/leaves/nodes is high. But there’s a reason for this: with a low cost complexity, a high number of nodes means overfitting! In other words, a model with high cost complexity and a greater number of trees appears equivalent to a smaller tree.</p>
+<p>But let’s look at the receiving operator area under the curve: clearly, a higher cost complexity weakens the model!</p>
+<p>This is a great example of why one should use more than one metric.</p>
+<pre class="r"><code>best_tree &lt;-
+  tree_resampling %&gt;%
+  select_best(&#39;roc_auc&#39;)
+
+best_tree</code></pre>
+<pre><code>## # A tibble: 1 x 3
+##   cost_complexity tree_depth .config              
+##             &lt;dbl&gt;      &lt;int&gt; &lt;chr&gt;                
+## 1    0.0000000001          8 Preprocessor1_Model11</code></pre>
+</div>
+<div id="finalise-the-workflow-and-last-fit" class="section level1">
+<h1>Finalise the Workflow and Last Fit</h1>
+<pre class="r"><code>final_tree_workflow &lt;-
+  tree_tuning_workflow %&gt;%
+  finalize_workflow(best_tree)
+
+final_tree_workflow</code></pre>
+<pre><code>## ══ Workflow ════════════════════════════════════════════════════════════════════
+## Preprocessor: Recipe
+## Model: decision_tree()
+## 
+## ── Preprocessor ────────────────────────────────────────────────────────────────
+## 8 Recipe Steps
+## 
+## ● step_mutate()
+## ● step_string2factor()
+## ● step_date()
+## ● step_holiday()
+## ● step_rm()
+## ● step_dummy()
+## ● step_zv()
+## ● step_downsample()
+## 
+## ── Model ───────────────────────────────────────────────────────────────────────
+## Decision Tree Model Specification (classification)
+## 
+## Main Arguments:
+##   cost_complexity = 1e-10
+##   tree_depth = 8
+## 
+## Computational engine: rpart</code></pre>
+<p>And the last fit, which computes simultaneously fitting on the training set and predicting the classes in the test set:</p>
+<pre class="r"><code>final_tree_fit &lt;-
+  final_tree_workflow %&gt;%
+  last_fit(trips_split)</code></pre>
+<p>Let’s get the final metrics:</p>
+<pre class="r"><code>final_tree_fit %&gt;%
+  collect_metrics()</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   .metric  .estimator .estimate .config             
+##   &lt;chr&gt;    &lt;chr&gt;          &lt;dbl&gt; &lt;chr&gt;               
+## 1 accuracy multiclass     0.670 Preprocessor1_Model1
+## 2 roc_auc  hand_till      0.892 Preprocessor1_Model1</code></pre>
+<p>Performance under the accuracy is low, but the AUC indicates that the model performs much better than our logistic regression!</p>
+</div>
+<div id="model-evaluation-and-considerations" class="section level1">
+<h1>Model Evaluation and Considerations</h1>
+<p>Let’s look at the confusion matrix:</p>
+<pre class="r"><code>final_tree_fit %&gt;%
+  collect_predictions() %&gt;%
+  conf_mat(EndNH, .pred_class) %&gt;%
+  autoplot(type = &#39;heatmap&#39;)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<p>Upon confronting the two confusion matrices, though, it appears that the tree performs worse! This is to be expected, as the trees have on average high variance and lower biases and so the model we chose might have overfit its resample. We shall improve on this model with the next!</p>
+<p>And <code>pluck</code> the <code>.workflow</code> column to get the importance of each variable:</p>
+<pre class="r"><code>final_tree_fit %&gt;%
+  pluck(&#39;.workflow&#39;, 1) %&gt;%
+  pull_workflow_fit() %&gt;%
+  vip()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<p>Note how this model uses different predictors than the regression: more of the neighbourhoods and less of the holidays.</p>
+</div>

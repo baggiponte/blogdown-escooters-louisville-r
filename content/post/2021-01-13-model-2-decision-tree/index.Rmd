@@ -8,3 +8,204 @@ tags: []
 ShowToc: true
 ---
 
+Let's train a widely employed, non-parametric machine learning algorithm. We shall outline its limits and improve on it with the next model.
+
+```{r, message=FALSE}
+library(tidymodels)
+library(tidyverse)
+
+# for downsampling
+library(themis)
+
+# for visualising importance of predictors
+library(vip)
+```
+
+# Load Data
+
+```{r}
+trips <-
+  read_csv(
+    'https://raw.githubusercontent.com/baggiponte/escooters-louisville-r/main/data/escooters_od_reduced.csv',
+    col_types = cols(
+      StartTime = col_datetime(format = '%Y-%m-%dT%H:%M:%SZ'),
+      Covid = col_factor(),
+      StartNH = col_factor(),
+      EndNH = col_factor()
+    ))
+```
+
+# Split in Train and Test Data
+
+Class imbalance needs to be addressed with stratified sampling, as we did in the earlier post:
+
+```{r}
+set.seed(42)
+
+trips_split <- initial_split(trips, strata = EndNH)
+
+trips_train <- training(trips_split)
+trips_test <- testing(trips_split)
+```
+
+# Define the Recipe
+
+This time, we shall set `under_ratio` to 1.
+
+```{r}
+trips_recipe <- trips_train %>%
+  recipe(EndNH ~ .) %>%
+  # problem: step_date does not extract times!
+  step_mutate(HourNum = format(strptime(StartTime,'%Y-%m-%d %H:%M:%S'),'%H')) %>%
+  # turn it into a factor
+  step_string2factor(HourNum) %>%
+  # create factors out of StartTime
+  step_date(StartTime, features = c('dow', 'month', 'year')) %>%
+  # create holiday dummy:
+  step_holiday(StartTime, holidays = timeDate::listHolidays("US")) %>%
+  # remove StartTime col
+  step_rm(StartTime) %>%
+  # turn factor-features into binary dummies (i.e. one per column: 1-0):
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  # remove predictors with zero variance:
+  step_zv(all_predictors()) %>%
+  # downsample the data: each class is as numerous as the least represented
+  themis::step_downsample(EndNH, under_ratio = 1)
+```
+
+# Define a Model with the Parameters to Tune
+
+```{r}
+tree_to_tune <- 
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune()
+  ) %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+tree_to_tune
+```
+
+# Add the Recipe and the Model to the Tuning Workflow
+
+```{r}
+tree_tuning_workflow <-
+  workflow() %>%
+  add_model(tree_to_tune) %>%
+  add_recipe(trips_recipe)
+
+tree_tuning_workflow
+```
+# Hyper-parameters Tuning
+
+## Define the tuning grid
+
+```{r}
+tree_tune_grid <- dials::grid_regular(cost_complexity(),
+                               tree_depth(),
+                               levels = 5)
+
+tree_tune_grid
+```
+
+## `k-fold` Cross Validation
+
+Defaults are `v = 10` and `repeats = 1`: we won't stick to these totally, to be consistent with our previous model. Folds are stratified, to ensure equal representation.
+
+```{r}
+set.seed(42)
+
+tree_cv_folds <-
+  trips_train %>%
+  vfold_cv(v = 5, strata = "StartNH")
+
+tree_cv_folds
+```
+
+# Cross validation for parameter tuning
+
+```{r}
+set.seed(42)
+
+tree_resampling <-
+  tree_tuning_workflow %>%
+  tune_grid(
+    resamples = tree_cv_folds,
+    grid = tree_tune_grid
+  )
+
+tree_resampling %>%
+  collect_metrics() %>%
+  arrange(desc(mean))
+```
+
+Performances are quite similar to those of the logistic, at least on the training set. Cost complexity does not affect performance, apparently. Let's plot it!
+
+```{r}
+tree_resampling %>%
+  autoplot()
+```
+We see quite a weird pattern. Accuracy increases with cost complexity when the number of branches/leaves/nodes is high. But there's a reason for this: with a low cost complexity, a high number of nodes means overfitting! In other words, a model with high cost complexity and a greater number of trees appears equivalent to a smaller tree.
+
+But let's look at the receiving operator area under the curve: clearly, a higher cost complexity weakens the model!
+
+This is a great example of why one should use more than one metric.
+
+```{r}
+best_tree <-
+  tree_resampling %>%
+  select_best('roc_auc')
+
+best_tree
+```
+
+# Finalise the Workflow and Last Fit
+
+```{r}
+final_tree_workflow <-
+  tree_tuning_workflow %>%
+  finalize_workflow(best_tree)
+
+final_tree_workflow
+```
+
+And the last fit, which computes simultaneously fitting on the training set and predicting the classes in the test set:
+
+```{r}
+final_tree_fit <-
+  final_tree_workflow %>%
+  last_fit(trips_split)
+```
+
+Let's get the final metrics:
+
+```{r}
+final_tree_fit %>%
+  collect_metrics()
+```
+Performance under the accuracy is low, but the AUC indicates that the model performs much better than our logistic regression!
+
+# Model Evaluation and Considerations
+
+Let's look at the confusion matrix:
+
+```{r}
+final_tree_fit %>%
+  collect_predictions() %>%
+  conf_mat(EndNH, .pred_class) %>%
+  autoplot(type = 'heatmap')
+```
+
+Upon confronting the two confusion matrices, though, it appears that the tree performs worse! This is to be expected, as the trees have on average high variance and lower biases and so the model we chose might have overfit its resample. We shall improve on this model with the next!
+
+And `pluck` the `.workflow` column to get the importance of each variable:
+
+```{r}
+final_tree_fit %>%
+  pluck('.workflow', 1) %>%
+  pull_workflow_fit() %>%
+  vip()
+```
+
+Note how this model uses different predictors than the regression: more of the neighbourhoods and less of the holidays.
