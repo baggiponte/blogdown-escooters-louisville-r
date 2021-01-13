@@ -1,7 +1,7 @@
 ---
 title: Last Feature Engineering
 author: Luca Baggi
-date: '2021-01-13'
+date: '2021-01-12'
 slug: []
 categories: []
 tags: []
@@ -11,3 +11,78 @@ ShowToc: True
 <script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
 
 
+<p>Before modelling, we need to address one last computing constraint.</p>
+<pre class="r"><code>library(tidyverse)</code></pre>
+<p>Then proceed to importing the data.</p>
+<div id="data-and-final-feature-engineering" class="section level1">
+<h1>Data and Final Feature Engineering</h1>
+<pre class="r"><code>url = &#39;https://raw.githubusercontent.com/baggiponte/escooters-louisville-python/main/data/escooters_od.csv&#39;
+
+trips_full &lt;-
+  # read the data
+  read_csv(url, col_types = cols(
+    StartTime = col_datetime(format = &#39;%Y-%m-%d %H:%M:%S&#39;)
+  )) %&gt;%
+  # remove columns not involved in predictions
+  select(-TripID, -EndTime) %&gt;%
+  # remove the outliers
+  filter(
+    # Duration between 0 and 30 minutes
+    Duration &gt; 0 &amp; Duration &lt;= 30 &amp; # NOTE THE `&amp;`
+      # Distance between 0 and 5km
+      Distance &gt; 0 &amp; Distance &lt;= 5000
+  ) %&gt;%
+  # manipulate cols:
+  mutate(
+    # turn into factors
+    StartNH = as.factor(StartNH),
+    EndNH = as.factor(EndNH),
+    # first covid death reported is on March 21st, 2020
+    Covid = as.factor(ifelse(StartTime &gt; &#39;2020-03-20 23:59:59&#39;, 1, 0))
+  ) %&gt;%
+  # reduce the number of levels in the factor features
+  mutate(
+    # select those with p &gt; 0.01
+    StartNH = fct_lump(StartNH, 5),
+    EndNH = fct_lump(EndNH, 5)
+  ) %&gt;%
+  # remove columns that would &#39;spoil&#39; the prediction
+  select(-Duration, -Distance,
+         -EndLongitude, -EndLatitude
+  ) %&gt;%
+  as_tibble()</code></pre>
+<p><strong>This is still too much for my hardware to process feasibly.</strong> We will sample some ten thousand values and proceed. This will result in a much, much weaker model, but at least we can use multiple resampling strategies.</p>
+<pre class="r"><code>set.seed(42)
+
+trips_full %&gt;%
+  slice_sample(prop = 0.1) -&gt; trips 
+
+trips_full %&gt;%
+  count(EndNH) %&gt;%
+  arrange(desc(n)) %&gt;%
+  mutate(prop = n / sum(n))</code></pre>
+<pre><code>## # A tibble: 6 x 3
+##   EndNH               n   prop
+##   &lt;fct&gt;           &lt;int&gt;  &lt;dbl&gt;
+## 1 Downtown       183399 0.475 
+## 2 University     109764 0.285 
+## 3 Southeast Core  39004 0.101 
+## 4 West Core       18039 0.0468
+## 5 Northeast Core  17941 0.0465
+## 6 Other           17593 0.0456</code></pre>
+<pre class="r"><code>trips %&gt;%
+  # if we put StartNH, EndNH we get a twoway freq table
+  count(EndNH) %&gt;%
+  arrange(desc(n)) %&gt;%
+  mutate(prop = n / sum(n))</code></pre>
+<pre><code>## # A tibble: 6 x 3
+##   EndNH              n   prop
+##   &lt;fct&gt;          &lt;int&gt;  &lt;dbl&gt;
+## 1 Downtown       18433 0.478 
+## 2 University     10993 0.285 
+## 3 Southeast Core  3812 0.0988
+## 4 West Core       1828 0.0474
+## 5 Northeast Core  1754 0.0455
+## 6 Other           1754 0.0455</code></pre>
+<p>Also, note an example of the <a href="https://en.wikipedia.org/wiki/Law_of_large_numbers">law of large numbers</a>!</p>
+</div>

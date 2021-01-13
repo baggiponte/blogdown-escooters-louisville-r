@@ -1,7 +1,7 @@
 ---
 title: Last Feature Engineering
 author: Luca Baggi
-date: '2021-01-13'
+date: '2021-01-12'
 slug: []
 categories: []
 tags: []
@@ -77,8 +77,3 @@ trips %>%
 ```
 
 Also, note an example of the [law of large numbers](https://en.wikipedia.org/wiki/Law_of_large_numbers)!
-
-```{r, include=FALSE}
-trips %>%
-  write_csv('data/escooters_od_reduced.csv')
-```
