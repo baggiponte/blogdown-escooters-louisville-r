@@ -152,7 +152,7 @@ tuning_folds <-
 
 ## Cross Validation
 
-This will fit 5x5 hyperparameters combinations to 5 folds: a total of 125 models! The package also has some defaults metrics for each machine learning problem: classification and regression, plus metrics for predicted classes in classification problems.
+This will fit 5x5 hyper-parameters combinations to 5 folds: a total of 125 models! The package also has some defaults metrics for each machine learning problem: classification and regression, plus metrics for predicted classes in classification problems.
 
 ```{r}
 set.seed(42)
@@ -263,6 +263,7 @@ logistic_last_fit %>%
   pull_workflow_fit() %>%
   vip()
 ```
+
 # Model Evaluation
 
 The program can't tell us the predictions associated with each class, but we are interested in `.pred_class`:
@@ -282,6 +283,6 @@ logistic_last_fit %>%
   autoplot(type = 'heatmap')
 ```
 
-# Final Considerations:
+# Final Considerations
 
 Some mismatches may be due to proximity of the destinations, which we do not account for here.
