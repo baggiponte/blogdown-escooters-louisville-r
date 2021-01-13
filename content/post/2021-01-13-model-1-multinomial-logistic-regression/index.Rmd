@@ -155,7 +155,7 @@ tuning_folds <-
 
 This will fit 5x5 hyper-parameters combinations to 5 folds: a total of 125 models! The package also has some defaults metrics for each machine learning problem: classification and regression, plus metrics for predicted classes in classification problems.
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
 set.seed(42)
 
 logistic_resampling <-
@@ -164,10 +164,6 @@ logistic_resampling <-
     resamples = tuning_folds,
     grid = logistic_grid
   )
-
-logistic_resampling %>%
-  collect_metrics() %>%
-  arrange(desc(mean))
 ```
 
 ## Best Model Selection
@@ -224,7 +220,7 @@ best_logistic_roc
 best_logistic_accuracy
 ```
 
-This confirms that we are indifferent between any `under_ratio`, but there is convergence on regularisation!
+Both metrics indicate the same model as the better one. This confirms that we are indifferent between any `under_ratio`, but there is convergence on regularisation!
 
 # Finalise the Workflow and Last Fit
 
@@ -244,16 +240,15 @@ set.seed(42)
 logistic_last_fit <-
   final_logistic_workflow %>%
   last_fit(trips_split)
-
-logistic_last_fit
 ```
 
 Let's get the metrics:
 
-```{r}
+```{r, message=FALSE, results='hide', warning=FALSE}
 logistic_last_fit %>%
   collect_metrics()
 ```
+
 Which, unfortunately, has lower accuracy than our train model! The ideal situation would be to display a higher test accuracy, compared to the training. Also, the missing `auc_roc` seems a bad sign. However, since we are doing multinomial classification, it is to be expected! The most we might get is a ROC measure for each class against the other, after grouping them.
 
 Let's see the contribution of each variable:
@@ -267,15 +262,7 @@ logistic_last_fit %>%
 
 # Model Evaluation
 
-The program can't tell us the predictions associated with each class, but we are interested in `.pred_class`:
-
-```{r}
-logistic_last_fit %>%
-  collect_predictions() %>%
-  head()
-```
-
-But we can get a confusion matrix:
+The program can't tell us the predictions associated with each class, but we are interested in `.pred_class`. But we can get a confusion matrix:
 
 ```{r}
 logistic_last_fit %>%

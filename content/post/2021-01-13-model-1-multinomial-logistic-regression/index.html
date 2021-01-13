@@ -200,50 +200,6 @@ logistic_resampling &lt;-
     resamples = tuning_folds,
     grid = logistic_grid
   )</code></pre>
-<pre><code>## 
-## Attaching package: &#39;rlang&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:purrr&#39;:
-## 
-##     %@%, as_function, flatten, flatten_chr, flatten_dbl, flatten_int,
-##     flatten_lgl, flatten_raw, invoke, list_along, modify, prepend,
-##     splice</code></pre>
-<pre><code>## 
-## Attaching package: &#39;vctrs&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
-## 
-##     data_frame</code></pre>
-<pre><code>## The following object is masked from &#39;package:tibble&#39;:
-## 
-##     data_frame</code></pre>
-<pre><code>## Loading required package: Matrix</code></pre>
-<pre><code>## 
-## Attaching package: &#39;Matrix&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:tidyr&#39;:
-## 
-##     expand, pack, unpack</code></pre>
-<pre><code>## Loaded glmnet 4.1</code></pre>
-<pre><code>## ! Fold1: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre><code>## ! Fold2: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre><code>## ! Fold3: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre><code>## ! Fold4: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre><code>## ! Fold5: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre class="r"><code>logistic_resampling %&gt;%
-  collect_metrics() %&gt;%
-  arrange(desc(mean))</code></pre>
-<pre><code>## # A tibble: 50 x 8
-##       penalty under_ratio .metric  .estimator  mean     n  std_err .config      
-##         &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;    &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;    &lt;dbl&gt; &lt;chr&gt;        
-##  1   3.16e- 3         1.2 roc_auc  hand_till  0.882     1 NA       Preprocessor…
-##  2   3.16e- 3         1.1 roc_auc  hand_till  0.881     1 NA       Preprocessor…
-##  3   3.16e- 3         0.8 roc_auc  hand_till  0.864     1 NA       Preprocessor…
-##  4   3.16e- 3         1.2 accuracy multiclass 0.791     5  0.00236 Preprocessor…
-##  5   3.16e- 3         1.1 accuracy multiclass 0.784     5  0.00323 Preprocessor…
-##  6   3.16e- 3         1   accuracy multiclass 0.781     5  0.00360 Preprocessor…
-##  7   3.16e- 3         0.8 accuracy multiclass 0.777     5  0.00453 Preprocessor…
-##  8   3.16e- 3         0.9 accuracy multiclass 0.775     5  0.00290 Preprocessor…
-##  9   1.00e-10         1.2 accuracy multiclass 0.768     5  0.00369 Preprocessor…
-## 10   3.16e- 8         1.2 accuracy multiclass 0.768     5  0.00369 Preprocessor…
-## # … with 40 more rows</code></pre>
 </div>
 <div id="best-model-selection" class="section level2">
 <h2>Best Model Selection</h2>
@@ -309,7 +265,7 @@ best_logistic_roc</code></pre>
 ##   penalty under_ratio .config             
 ##     &lt;dbl&gt;       &lt;dbl&gt; &lt;chr&gt;               
 ## 1 0.00316         1.2 Preprocessor5_Model4</code></pre>
-<p>This confirms that we are indifferent between any <code>under_ratio</code>, but there is convergence on regularisation!</p>
+<p>Both metrics indicate the same model as the better one. This confirms that we are indifferent between any <code>under_ratio</code>, but there is convergence on regularisation!</p>
 </div>
 </div>
 <div id="finalise-the-workflow-and-last-fit" class="section level1">
@@ -349,24 +305,9 @@ logistic_last_fit &lt;-
   final_logistic_workflow %&gt;%
   last_fit(trips_split)</code></pre>
 <pre><code>## ! train/test split: internal: No observations were detected in `truth` for level(s): &#39;Downto...</code></pre>
-<pre class="r"><code>logistic_last_fit</code></pre>
-<pre><code>## Warning: This tuning result has notes. Example notes on model fitting include:
-## internal: No observations were detected in `truth` for level(s): &#39;Downtown&#39;, &#39;Northeast Core&#39;, &#39;Other&#39;, &#39;Southeast Core&#39;, &#39;University&#39;, &#39;West Core&#39;
-## Computation will proceed by ignoring those levels.</code></pre>
-<pre><code>## # Resampling results
-## # Manual resampling 
-## # A tibble: 1 x 6
-##   splits         id          .metrics     .notes      .predictions     .workflow
-##   &lt;list&gt;         &lt;chr&gt;       &lt;list&gt;       &lt;list&gt;      &lt;list&gt;           &lt;list&gt;   
-## 1 &lt;split [28.9K… train/test… &lt;tibble [2 … &lt;tibble [1… &lt;tibble [9,643 … &lt;workflo…</code></pre>
 <p>Let’s get the metrics:</p>
 <pre class="r"><code>logistic_last_fit %&gt;%
   collect_metrics()</code></pre>
-<pre><code>## # A tibble: 2 x 4
-##   .metric  .estimator .estimate .config             
-##   &lt;chr&gt;    &lt;chr&gt;          &lt;dbl&gt; &lt;chr&gt;               
-## 1 accuracy multiclass     0.801 Preprocessor1_Model1
-## 2 roc_auc  hand_till    NaN     Preprocessor1_Model1</code></pre>
 <p>Which, unfortunately, has lower accuracy than our train model! The ideal situation would be to display a higher test accuracy, compared to the training. Also, the missing <code>auc_roc</code> seems a bad sign. However, since we are doing multinomial classification, it is to be expected! The most we might get is a ROC measure for each class against the other, after grouping them.</p>
 <p>Let’s see the contribution of each variable:</p>
 <pre class="r"><code>logistic_last_fit %&gt;%
@@ -377,27 +318,12 @@ logistic_last_fit &lt;-
 </div>
 <div id="model-evaluation" class="section level1">
 <h1>Model Evaluation</h1>
-<p>The program can’t tell us the predictions associated with each class, but we are interested in <code>.pred_class</code>:</p>
-<pre class="r"><code>logistic_last_fit %&gt;%
-  collect_predictions() %&gt;%
-  head()</code></pre>
-<pre><code>## # A tibble: 6 x 11
-##   id    .pred_Downtown `.pred_Northeas… .pred_Other `.pred_Southeas…
-##   &lt;chr&gt;          &lt;dbl&gt;            &lt;dbl&gt;       &lt;dbl&gt;            &lt;dbl&gt;
-## 1 trai…            NaN              NaN         NaN              NaN
-## 2 trai…            NaN              NaN         NaN              NaN
-## 3 trai…            NaN              NaN         NaN              NaN
-## 4 trai…            NaN              NaN         NaN              NaN
-## 5 trai…            NaN              NaN         NaN              NaN
-## 6 trai…            NaN              NaN         NaN              NaN
-## # … with 6 more variables: .pred_University &lt;dbl&gt;, `.pred_West Core` &lt;dbl&gt;,
-## #   .row &lt;int&gt;, .pred_class &lt;fct&gt;, EndNH &lt;fct&gt;, .config &lt;chr&gt;</code></pre>
-<p>But we can get a confusion matrix:</p>
+<p>The program can’t tell us the predictions associated with each class, but we are interested in <code>.pred_class</code>. But we can get a confusion matrix:</p>
 <pre class="r"><code>logistic_last_fit %&gt;%
   collect_predictions() %&gt;%
   conf_mat(EndNH, .pred_class) %&gt;%
   autoplot(type = &#39;heatmap&#39;)</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-20-1.png" width="672" /></p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-19-1.png" width="672" /></p>
 </div>
 <div id="final-considerations" class="section level1">
 <h1>Final Considerations</h1>
