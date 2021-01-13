@@ -75,6 +75,8 @@ trips_recipe <- trips_train %>%
 
 # Define a Model with the Parameters to Tune
 
+There are two parameters we want to tune in our tree:
+
 ```{r}
 tree_to_tune <- 
   decision_tree(
@@ -89,6 +91,8 @@ tree_to_tune
 
 # Add the Recipe and the Model to the Tuning Workflow
 
+Once again, let's add the two to make the workflow:
+
 ```{r}
 tree_tuning_workflow <-
   workflow() %>%
@@ -101,12 +105,17 @@ tree_tuning_workflow
 
 ## Define the tuning grid
 
-```{r}
-tree_tune_grid <- dials::grid_regular(cost_complexity(),
-                               tree_depth(),
-                               levels = 5)
+Define a grid with our parameters of interest: `cost_complexity` is analogue to the measure of regularisation in linear models. `tree_depth` indicates the number of nodes.
 
-tree_tune_grid
+```{r}
+tree_tune_grid <-
+  dials::grid_regular(
+    cost_complexity(),
+    tree_depth(),
+    levels = 5
+)
+
+tree_tune_grid %>% head()
 ```
 
 ## `k-fold` Cross Validation
@@ -125,7 +134,9 @@ tree_cv_folds
 
 # Cross validation for parameter tuning
 
-```{r, message=FALSE}
+Let's initialise the resample:
+
+```{r, results='hide'}
 set.seed(42)
 
 tree_resampling <-
@@ -134,7 +145,11 @@ tree_resampling <-
     resamples = tree_cv_folds,
     grid = tree_tune_grid
   )
+```
 
+And sort the models by their metrics:
+
+```{r}
 tree_resampling %>%
   collect_metrics() %>%
   arrange(desc(mean))
