@@ -200,5 +200,3 @@ twoway %>%
   prep_cord_data() %>%
   chord_plot()
 ```
-
-
