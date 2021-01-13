@@ -125,7 +125,7 @@ tree_cv_folds
 
 # Cross validation for parameter tuning
 
-```{r}
+```{r, message=FALSE}
 set.seed(42)
 
 tree_resampling <-
@@ -146,6 +146,7 @@ Performances are quite similar to those of the logistic, at least on the trainin
 tree_resampling %>%
   autoplot()
 ```
+
 We see quite a weird pattern. Accuracy increases with cost complexity when the number of branches/leaves/nodes is high. But there's a reason for this: with a low cost complexity, a high number of nodes means overfitting! In other words, a model with high cost complexity and a greater number of trees appears equivalent to a smaller tree.
 
 But let's look at the receiving operator area under the curve: clearly, a higher cost complexity weakens the model!

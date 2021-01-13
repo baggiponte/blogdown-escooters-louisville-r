@@ -170,28 +170,9 @@ tree_resampling &lt;-
   tune_grid(
     resamples = tree_cv_folds,
     grid = tree_tune_grid
-  )</code></pre>
-<pre><code>## 
-## Attaching package: &#39;rlang&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:purrr&#39;:
-## 
-##     %@%, as_function, flatten, flatten_chr, flatten_dbl, flatten_int,
-##     flatten_lgl, flatten_raw, invoke, list_along, modify, prepend,
-##     splice</code></pre>
-<pre><code>## 
-## Attaching package: &#39;vctrs&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:tibble&#39;:
-## 
-##     data_frame</code></pre>
-<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
-## 
-##     data_frame</code></pre>
-<pre><code>## 
-## Attaching package: &#39;rpart&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:dials&#39;:
-## 
-##     prune</code></pre>
-<pre class="r"><code>tree_resampling %&gt;%
+  )
+
+tree_resampling %&gt;%
   collect_metrics() %&gt;%
   arrange(desc(mean))</code></pre>
 <pre><code>## # A tibble: 50 x 8
@@ -211,8 +192,8 @@ tree_resampling &lt;-
 <p>Performances are quite similar to those of the logistic, at least on the training set. Cost complexity does not affect performance, apparently. Let’s plot it!</p>
 <pre class="r"><code>tree_resampling %&gt;%
   autoplot()</code></pre>
-<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" />
-We see quite a weird pattern. Accuracy increases with cost complexity when the number of branches/leaves/nodes is high. But there’s a reason for this: with a low cost complexity, a high number of nodes means overfitting! In other words, a model with high cost complexity and a greater number of trees appears equivalent to a smaller tree.</p>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
+<p>We see quite a weird pattern. Accuracy increases with cost complexity when the number of branches/leaves/nodes is high. But there’s a reason for this: with a low cost complexity, a high number of nodes means overfitting! In other words, a model with high cost complexity and a greater number of trees appears equivalent to a smaller tree.</p>
 <p>But let’s look at the receiving operator area under the curve: clearly, a higher cost complexity weakens the model!</p>
 <p>This is a great example of why one should use more than one metric.</p>
 <pre class="r"><code>best_tree &lt;-
