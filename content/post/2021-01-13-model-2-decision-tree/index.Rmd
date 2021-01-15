@@ -1,7 +1,7 @@
 ---
 title: 'Model 2: Decision Tree'
 author: Luca Baggi
-date: '2021-01-13'
+date: '2021-01-14'
 slug: []
 categories: []
 tags: []
