@@ -1,11 +1,16 @@
+# R stuff
 .DS_Store
 .Rproj.user
 *.Rproj
 .Rprofile
 .Rhistory
 
+# renv
 renv
 renv.lock
 
 # Local Netlify folder
 .netlify
+
+# Public Hugo folder
+public
