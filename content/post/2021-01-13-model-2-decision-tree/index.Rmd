@@ -8,7 +8,9 @@ tags: []
 ShowToc: true
 ---
 
-Let's train a widely employed, non-parametric machine learning algorithm. We shall outline its limits and improve on it with the next model.
+Let's train a widely employed, non-parametric machine learning algorithm: decision trees. We shall outline its limits and improve on it with the next model.
+
+# Load Libraries
 
 ```{r, message=FALSE}
 library(tidymodels)
@@ -19,6 +21,9 @@ library(themis)
 
 # for visualising importance of predictors
 library(vip)
+
+# for plotting the tree!
+library(rpart.plot)
 ```
 
 # Load Data
@@ -69,13 +74,15 @@ trips_recipe <- trips_train %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
   # remove predictors with zero variance:
   step_zv(all_predictors()) %>%
-  # downsample the data: each class is as numerous as the least represented
+  # we found out under_ratio tuning plays a minor role
   themis::step_downsample(EndNH, under_ratio = 1)
 ```
 
 # Define a Model with the Parameters to Tune
 
-There are two parameters we want to tune in our tree:
+There are two parameters we want to tune in our tree: `cost_complexity` and `tree_depth`. The former is the cost parameter of the function the algorithm optimises (a measure of *deviance*), the latter the number of splits. There is one more: `min_n`, the minimum number of observations in a node to proceed to the split.
+
+The [default value](https://rdrr.io/cran/rpart/man/rpart.html) is 20 and is inherited from `rpart`, which also defaults to `gini` as a splitting rule (argument is `parms = list(..., split = 'gini')` for default, can be changed to `information`).
 
 ```{r}
 tree_to_tune <- 
@@ -101,6 +108,7 @@ tree_tuning_workflow <-
 
 tree_tuning_workflow
 ```
+
 # Hyper-parameters Tuning
 
 ## Define the tuning grid
@@ -127,14 +135,16 @@ set.seed(42)
 
 tree_cv_folds <-
   trips_train %>%
-  vfold_cv(v = 5, strata = "StartNH")
+  vfold_cv(v = 5, strata = "EndNH")
 
 tree_cv_folds
 ```
 
 # Cross validation for parameter tuning
 
-Let's initialise the resample:
+Let's define the metrics we will want to use. The full list is [here](https://yardstick.tidymodels.org/articles/metric-types.html) and they are split in `probability` and `classification` metrics. Defaults will be `auc_roc` and `accuracy`.
+
+Let's initialise the resample.
 
 ```{r, results='hide', message=FALSE, warning=FALSE}
 set.seed(42)
@@ -143,7 +153,10 @@ tree_resampling <-
   tree_tuning_workflow %>%
   tune_grid(
     resamples = tree_cv_folds,
-    grid = tree_tune_grid
+    grid = tree_tune_grid,
+    # if I were to choose my metrics:
+    # metrics = my_metrics,
+    control = control_grid(verbose = T)
   )
 ```
 
@@ -151,8 +164,8 @@ And sort the models by their metrics:
 
 ```{r}
 tree_resampling %>%
-  collect_metrics() %>%
-  arrange(desc(mean))
+  collect_metrics %>%
+  arrange(desc(mean, .metric))
 ```
 
 Performances are quite similar to those of the logistic, at least on the training set. Cost complexity does not affect performance, apparently. Let's plot it!
@@ -189,22 +202,20 @@ final_tree_workflow
 And the last fit, which computes simultaneously fitting on the training set and predicting the classes in the test set:
 
 ```{r}
+set.seed(42)
+
 final_tree_fit <-
   final_tree_workflow %>%
   last_fit(trips_split)
 ```
 
-Let's get the final metrics:
+Let's get the final metrics. `hand_till` indicates the procedure employed by Hand and Till (2001) to compute multiclass `ROC AUC`.
 
 ```{r}
 final_tree_fit %>%
   collect_metrics()
 ```
-Performance under the accuracy is low, but the AUC indicates that the model performs much better than our logistic regression!
-
-# Model Evaluation and Considerations
-
-Let's look at the confusion matrix:
+Performance under the accuracy is low, but the `roc_auc` is greater. Let's go a step forward and plot the confusion matrix:
 
 ```{r}
 final_tree_fit %>%
@@ -213,9 +224,11 @@ final_tree_fit %>%
   autoplot(type = 'heatmap')
 ```
 
-Upon confronting the two confusion matrices, though, it appears that the tree performs worse! This is to be expected, as the trees have on average high variance and lower biases and so the model we chose might have overfit its resample. We shall improve on this model with the next!
+Upon confronting the two confusion matrices, though, it appears that the tree performs worse! This is to be expected, as the trees have on average high variance and lower biases and so the model we chose might have overfit its resample. We shall improve on this model with the next.
 
-And `pluck` the `.workflow` column to get the importance of each variable:
+# Variable Importance and Plotting the Tree
+
+And `pluck` the `.workflow` column to get the importance of each variable. This plot is simply a frequency plot of the first node of each of the fitted trees
 
 ```{r}
 final_tree_fit %>%
@@ -225,3 +238,14 @@ final_tree_fit %>%
 ```
 
 Note how this model uses different predictors than the regression: more of the neighbourhoods and less of the holidays.
+
+Finally, let's see the plot:
+
+```{r}
+tree_fit <- final_tree_fit %>%
+  pluck('.workflow', 1) %>%
+  pull_workflow_fit()
+
+tree_fit$fit %>% rpart.plot::rpart.plot()
+```
+
