@@ -1,0 +1,22 @@
+---
+title: Final Considerations
+author: Luca Baggi
+date: '2021-01-17'
+slug: []
+categories: []
+tags: []
+---
+
+<script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
+
+
+<p>The aim of this analysis is to display some machine learning techniques, without expecting to be exhaustive. Notably, there is one serious shortcoming: models should not include geographical coordinates as independent variables. Instead, a grid should have made out of these and observations assigned to each. In this way, more patterns may have been discovered.</p>
+<p>Given this information, we could have also created ideal paths for each trip, using data from one cell to another. This wouldn’t have improved the predictive models, but had an impact on clustering and identifying hotspots locations (such as stations).</p>
+<p>One great limitation was hardware. <code>Tidymodels</code> proved useful, albeit overly complicated at times: what’ss the need of <code>prep()</code>-ing a recipe and separately <code>juice()</code> the training set and <code>bake()</code> the test one? Also, it seems there is not too much support for unsupervised learning.</p>
+<p>To implement better and more meaningful visualisations, the following will need implementation:</p>
+<ol style="list-style-type: decimal">
+<li>Facet histograms of distance and duration for each neighbourhood</li>
+<li>More maps, perhaps with flows</li>
+</ol>
+<p>The last point will need a greater understanding of R geographical libraries, which are more fragmented with respect to Python. These would also be useful in making the grid.</p>
+<p>Finally, a time-series predictive model would be great to conclude the analysis.</p>
