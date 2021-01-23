@@ -1,5 +1,8 @@
-# R stuff
+# Stuff
 .DS_Store
+*/.DS_Store
+
+# R Stuff
 .Rproj.user
 *.Rproj
 .Rprofile
