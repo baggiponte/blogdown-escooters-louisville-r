@@ -22,4 +22,8 @@ The articles are presented as follows:
 4. **Decision Tree**.
 5. **K-means and Hierarchical Clustering**.
 
+## Credits
+
 The theme used is the elegant [`PaperMod`](https://github.com/adityatelange/hugo-PaperMod).
+
+The data is available [here](https://data.louisvilleky.gov/dataset/dockless-vehicles).
