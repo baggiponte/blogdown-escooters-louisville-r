@@ -12,6 +12,13 @@ I have almost relied entirely on [`tidymodels`](https://github.com/tidymodels/ti
 I have also made a [repository](https://github.com/baggiponte/learn-tidymodels) to reproduce some basic tutorials with this framework:
 you can find the originals [here](https://www.tidymodels.org/start/).
 
+## The data
+
+The original raw data can be obtained from [here](https://data.louisvilleky.gov/dataset/dockless-vehicles).
+
+I did some preprocessing in Python, which you can find [here](https://github.com/baggiponte/escooters-louisville-python). I basically used it for two things:
+a starting data cleaning to get deal with mislabelled observations and then used [`geopandas`](https://geopandas.org/) to intersect the data with a shapefile of the city.
+
 ## Quick Table of Contents
 
 The articles are presented as follows:
@@ -28,4 +35,4 @@ The articles are presented as follows:
 
 The theme used is the elegant [`PaperMod`](https://github.com/adityatelange/hugo-PaperMod).
 
-The data is available [here](https://data.louisvilleky.gov/dataset/dockless-vehicles).
+Please make sure to check out [`blogdown`](https://bookdown.org/yihui/blogdown/) and [`tidymodels`](https://www.tidymodels.org)!
