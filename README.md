@@ -4,7 +4,7 @@
 
 This is the repo connected to `netlify` with the source material for the static website create with `blogdown` and `hugo` for the content in the omonimous repo [escooters-louisville-r](https://github.com/baggiponte/escooters-louisville-r).
 
-The `.Rmarkdown` notebooks are published is in the directory `content`.
+The `.Rmarkdown` notebooks are published is in the directory [`/content/post`](https://github.com/baggiponte/blogdown-escooters-louisville-r/tree/main/content/post).
 
 ## Libraries for Machine Learning
 
@@ -18,9 +18,11 @@ The articles are presented as follows:
 
 1. **Exploratory Data Analysis**.
 2. **Some Advanced Visualisations** using `{circlize}` and `{ggalluvial}`.
+3. **Final Feature Engineering**: creating the final dataset that will be used.
 3. **Multinomial Logistic Regression**.
 4. **Decision Tree**.
 5. **K-means and Hierarchical Clustering**.
+6. **Final Considerations** on what is missing and how I felt using Tidymodels.
 
 ## Credits
 
