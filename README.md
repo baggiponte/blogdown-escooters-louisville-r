@@ -6,4 +6,20 @@ This is the repo connected to `netlify` with the source material for the static 
 
 The `.Rmarkdown` notebooks are published is in the directory `content`.
 
+## Libraries for Machine Learning
+
+I have almost relied entirely on [`tidymodels`](https://github.com/tidymodels/tidymodels).
+I have also made a [repository](https://github.com/baggiponte/learn-tidymodels) to reproduce some basic tutorials with this framework:
+you can find the originals [here](https://www.tidymodels.org/start/).
+
+## Quick Table of Contents
+
+The articles are presented as follows:
+
+1. **Exploratory Data Analysis**.
+2. **Some Advanced Visualisations** using `{circlize}` and `{ggalluvial}`.
+3. **Multinomial Logistic Regression**.
+4. **Decision Tree**.
+5. **K-means and Hierarchical Clustering**.
+
 The theme used is the elegant [`PaperMod`](https://github.com/adityatelange/hugo-PaperMod).
